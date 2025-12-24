@@ -10,16 +10,17 @@ const PORT = process.env.PORT || 3000;
 // CONFIG
 // =======================
 const MAX_FILE_SIZE = 10 * 1024 * 1024 * 1024; // 10GB
-
 const ALLOWED_EXTENSIONS = /\.(zip|rar|7z|pdf|png|jpg|jpeg|gif|webp|mp4|webm|mov|avi|mkv|mp3|wav|ogg|apk|exe|iso|txt|json)$/i;
 
 // =======================
 // FOLDERS
 // =======================
-const UPLOAD_DIR = path.join(__dirname, "uploads");
-const PUBLIC_DIR = path.join(__dirname, "public");
+// Use /tmp/uploads instead of __dirname/uploads
+const UPLOAD_DIR = path.join("/tmp", "uploads");
 
 if (!fs.existsSync(UPLOAD_DIR)) fs.mkdirSync(UPLOAD_DIR, { recursive: true });
+
+const PUBLIC_DIR = path.join(__dirname, "public");
 
 // =======================
 // MIDDLEWARE
@@ -54,12 +55,8 @@ const upload = multer({
 // =======================
 // ROUTES
 // =======================
-
-// Upload endpoint
 app.post("/upload", upload.single("file"), (req, res) => {
-  if (!req.file) {
-    return res.status(400).json({ success: false, error: "No file uploaded" });
-  }
+  if (!req.file) return res.status(400).json({ success: false, error: "No file uploaded" });
 
   const fileUrl = `${req.protocol}://${req.get("host")}/uploads/${req.file.filename}`;
 
@@ -72,9 +69,7 @@ app.post("/upload", upload.single("file"), (req, res) => {
 });
 
 // 404
-app.use((req, res) => {
-  res.status(404).send("404 Not Found");
-});
+app.use((req, res) => res.status(404).send("404 Not Found"));
 
 // =======================
 // AUTO CLEANUP (7 days)
@@ -89,9 +84,7 @@ setInterval(() => {
       const filePath = path.join(UPLOAD_DIR, file);
       fs.stat(filePath, (err, stats) => {
         if (err) return;
-        if (now - stats.mtimeMs > MAX_AGE) {
-          fs.unlink(filePath, () => {});
-        }
+        if (now - stats.mtimeMs > MAX_AGE) fs.unlink(filePath, () => {});
       });
     });
   });
