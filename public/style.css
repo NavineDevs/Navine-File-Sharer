@@ -12,34 +12,51 @@ body {
   background: #0b0d12;
   padding: 30px;
   border-radius: 12px;
+  width: 360px;
   box-shadow: 0 0 30px #008cff;
-  width: 340px;
   text-align: center;
 }
 
 h1 {
-  margin-bottom: 20px;
   text-shadow: 0 0 15px #00b7ff;
 }
 
 input, button {
   width: 100%;
-  margin-top: 10px;
+  margin-top: 12px;
   padding: 10px;
-  background: #05070b;
-  border: 1px solid #00b7ff;
-  color: #00b7ff;
   border-radius: 6px;
+  border: 1px solid #00b7ff;
+  background: #05070b;
+  color: #00b7ff;
 }
 
 button {
-  cursor: pointer;
-  font-weight: bold;
   background: linear-gradient(135deg, #007bff, #00b7ff);
   color: black;
+  font-weight: bold;
+  cursor: pointer;
 }
 
-#progress {
-  margin-top: 10px;
+.progress-container {
+  margin-top: 15px;
+  width: 100%;
+  height: 14px;
+  background: #020409;
+  border-radius: 10px;
+  overflow: hidden;
+  border: 1px solid #00b7ff;
+}
+
+#progress-bar {
+  height: 100%;
+  width: 0%;
+  background: linear-gradient(90deg, #00b7ff, #008cff);
+  box-shadow: 0 0 12px #00b7ff;
+  transition: width 0.2s ease;
+}
+
+#progress-text {
+  margin-top: 8px;
   font-size: 14px;
 }
