@@ -1,7 +1,6 @@
 import express from "express";
 import fs from "fs";
 import path from "path";
-import bcrypt from "bcryptjs";
 import { nanoid } from "nanoid";
 
 const app = express();
@@ -14,11 +13,11 @@ const CHUNKS = path.join(ROOT, "chunks");
 const DB = path.join(ROOT, "db.json");
 
 const MAX_FILE = 10 * 1024 * 1024 * 1024; // 10GB
-const CHUNK = 50 * 1024 * 1024;
+const CHUNK = 50 * 1024 * 1024; // 50MB
 
 const ALLOWED = new Set([
-  "zip","rar","7z","pdf","png","jpg","jpeg","mp4","mp3",
-  "exe","apk","iso","txt","json"
+  "zip","rar","7z","pdf","png","jpg","jpeg","gif",
+  "mp4","mp3","wav","exe","apk","iso","txt","json"
 ]);
 
 for (const d of [UPLOADS, CHUNKS, PUBLIC]) {
@@ -33,27 +32,32 @@ const load = () => JSON.parse(fs.readFileSync(DB));
 const save = (d) => fs.writeFileSync(DB, JSON.stringify(d, null, 2));
 
 const ext = f => f.split(".").pop().toLowerCase();
+const safe = f => f.replace(/[^a-zA-Z0-9._-]/g, "_");
 
-app.post("/api/init", async (req, res) => {
-  const { filename, size, password } = req.body;
+app.post("/api/init", (req, res) => {
+  const { filename, size } = req.body;
   if (!filename || !size) return res.sendStatus(400);
   if (size > MAX_FILE) return res.status(413).json({ error: "Max 10GB" });
-  if (!ALLOWED.has(ext(filename))) return res.status(400).json({ error: "Extension blocked" });
+  if (!ALLOWED.has(ext(filename))) return res.status(400).json({ error: "Blocked file type" });
 
   const uploadId = nanoid();
-  const fileId = nanoid(10);
+  const fileId = nanoid(8);
   fs.mkdirSync(path.join(CHUNKS, uploadId));
 
+  const cleanName = safe(filename);
+  const storedName = `${fileId}-${cleanName}`;
+
   const db = load();
-  db.files[fileId] = {
-    uploadId,
-    filename,
-    size,
-    password: password ? await bcrypt.hash(password, 10) : null
-  };
+  db.files[fileId] = { uploadId, storedName };
   save(db);
 
-  res.json({ uploadId, fileId, chunkSize: CHUNK });
+  res.json({
+    uploadId,
+    fileId,
+    storedName,
+    chunkSize: CHUNK,
+    url: `/files/${storedName}`
+  });
 });
 
 app.post("/api/chunk", express.raw({ limit: `${CHUNK}b` }), (req, res) => {
@@ -64,11 +68,8 @@ app.post("/api/chunk", express.raw({ limit: `${CHUNK}b` }), (req, res) => {
 });
 
 app.post("/api/finish", (req, res) => {
-  const { uploadId, fileId, total } = req.body;
-  const db = load();
-  const meta = db.files[fileId];
-
-  const out = path.join(UPLOADS, `${fileId}-${meta.filename}`);
+  const { uploadId, storedName, total } = req.body;
+  const out = path.join(UPLOADS, storedName);
   const ws = fs.createWriteStream(out);
 
   for (let i = 0; i < total; i++) {
@@ -77,24 +78,13 @@ app.post("/api/finish", (req, res) => {
   ws.end();
 
   fs.rmSync(path.join(CHUNKS, uploadId), { recursive: true, force: true });
-  res.json({ link: `/download/${fileId}` });
+
+  res.json({ url: `/files/${storedName}` });
 });
 
-app.get("/download/:id", async (req, res) => {
-  const db = load();
-  const f = db.files[req.params.id];
-  if (!f) return res.sendStatus(404);
+app.use("/files", express.static(UPLOADS));
 
-  if (f.password) {
-    const p = req.query.password;
-    if (!p || !(await bcrypt.compare(p, f.password))) {
-      return res.status(401).send("Password required");
-    }
-  }
-
-  res.download(path.join(UPLOADS, `${req.params.id}-${f.filename}`));
+app.listen(PORT, () => {
+  console.log("🖤⚡ Navine File Sharer running");
+  console.log(`→ http://localhost:${PORT}`);
 });
-
-app.listen(PORT, () =>
-  console.log(`🖤 Navine File Sharer running → http://localhost:${PORT}`)
-);
