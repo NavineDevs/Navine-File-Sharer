@@ -1,12 +1,14 @@
 async function upload() {
   const file = document.getElementById("file").files[0];
-  const password = document.getElementById("password").value;
   if (!file) return;
 
   const init = await fetch("/api/init", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ filename: file.name, size: file.size, password })
+    body: JSON.stringify({
+      filename: file.name,
+      size: file.size
+    })
   }).then(r => r.json());
 
   const chunkSize = init.chunkSize;
@@ -18,8 +20,9 @@ async function upload() {
       method: "POST",
       body: slice
     });
+
     document.getElementById("progress").innerText =
-      `Uploading ${Math.floor(((i+1)/total)*100)}%`;
+      `Uploading ${Math.floor(((i + 1) / total) * 100)}%`;
   }
 
   const done = await fetch("/api/finish", {
@@ -27,11 +30,13 @@ async function upload() {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       uploadId: init.uploadId,
-      fileId: init.fileId,
+      storedName: init.storedName,
       total
     })
   }).then(r => r.json());
 
-  document.getElementById("result").innerHTML =
-    `<a href="${done.link}" target="_blank">Download Link</a>`;
+  document.getElementById("result").innerHTML = `
+    <p>Upload Complete</p>
+    <a href="${done.url}" target="_blank">${done.url}</a>
+  `;
 }
