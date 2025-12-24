@@ -1,4 +1,4 @@
-async function upload() {
+function upload() {
   const fileInput = document.getElementById("file");
   const file = fileInput.files[0];
   if (!file) return alert("Select a file");
@@ -6,22 +6,32 @@ async function upload() {
   const formData = new FormData();
   formData.append("file", file);
 
-  document.getElementById("progress").innerText = "Uploading...";
+  const xhr = new XMLHttpRequest();
 
-  const res = await fetch("/upload", {
-    method: "POST",
-    body: formData
-  });
+  xhr.upload.onprogress = (e) => {
+    if (e.lengthComputable) {
+      const percent = Math.round((e.loaded / e.total) * 100);
+      document.getElementById("progress-bar").style.width = percent + "%";
+      document.getElementById("progress-text").innerText = `Uploading ${percent}%`;
+    }
+  };
 
-  const data = await res.json();
+  xhr.onload = () => {
+    if (xhr.status === 200) {
+      const data = JSON.parse(xhr.responseText);
+      document.getElementById("progress-text").innerText = "Upload complete";
+      document.getElementById("result").innerHTML = `
+        <a href="${data.url}" target="_blank">${data.url}</a>
+      `;
+    } else {
+      document.getElementById("progress-text").innerText = "Upload failed";
+    }
+  };
 
-  if (!data.success) {
-    document.getElementById("progress").innerText = "Upload failed";
-    return;
-  }
+  xhr.onerror = () => {
+    document.getElementById("progress-text").innerText = "Upload error";
+  };
 
-  document.getElementById("progress").innerText = "Upload complete";
-  document.getElementById("result").innerHTML = `
-    <a href="${data.url}" target="_blank">${data.url}</a>
-  `;
+  xhr.open("POST", "/upload");
+  xhr.send(formData);
 }
