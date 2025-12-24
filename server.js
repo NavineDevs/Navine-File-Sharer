@@ -1,89 +1,105 @@
-import express from "express";
-import fs from "fs";
-import path from "path";
-import { nanoid } from "nanoid";
+const express = require("express");
+const multer = require("multer");
+const path = require("path");
+const fs = require("fs");
 
 const app = express();
-const PORT = 3000;
+const PORT = process.env.PORT || 3000;
 
-const ROOT = process.cwd();
-const PUBLIC = path.join(ROOT, "public");
-const UPLOADS = path.join(ROOT, "uploads");
-const CHUNKS = path.join(ROOT, "chunks");
-const DB = path.join(ROOT, "db.json");
+// =======================
+// CONFIG
+// =======================
+const MAX_FILE_SIZE = 10 * 1024 * 1024 * 1024; // 10GB
 
-const MAX_FILE = 10 * 1024 * 1024 * 1024; // 10GB
-const CHUNK = 50 * 1024 * 1024; // 50MB
+const ALLOWED_EXTENSIONS = /\.(zip|rar|7z|pdf|png|jpg|jpeg|gif|webp|mp4|webm|mov|avi|mkv|mp3|wav|ogg|apk|exe|iso|txt|json)$/i;
 
-const ALLOWED = new Set([
-  "zip","rar","7z","pdf","png","jpg","jpeg","gif",
-  "mp4","mp3","wav","exe","apk","iso","txt","json"
-]);
+// =======================
+// FOLDERS
+// =======================
+const UPLOAD_DIR = path.join(__dirname, "uploads");
+const PUBLIC_DIR = path.join(__dirname, "public");
 
-for (const d of [UPLOADS, CHUNKS, PUBLIC]) {
-  if (!fs.existsSync(d)) fs.mkdirSync(d, { recursive: true });
-}
-if (!fs.existsSync(DB)) fs.writeFileSync(DB, JSON.stringify({ files: {} }, null, 2));
+if (!fs.existsSync(UPLOAD_DIR)) fs.mkdirSync(UPLOAD_DIR, { recursive: true });
 
-app.use(express.json());
-app.use(express.static(PUBLIC));
+// =======================
+// MIDDLEWARE
+// =======================
+app.use(express.static(PUBLIC_DIR));
+app.use("/uploads", express.static(UPLOAD_DIR));
 
-const load = () => JSON.parse(fs.readFileSync(DB));
-const save = (d) => fs.writeFileSync(DB, JSON.stringify(d, null, 2));
+// =======================
+// MULTER SETUP
+// =======================
+const storage = multer.diskStorage({
+  destination: UPLOAD_DIR,
+  filename: (req, file, cb) => {
+    const safeName = file.originalname.replace(/[^a-zA-Z0-9._-]/g, "_");
+    const finalName = `${Date.now()}-${safeName}`;
+    cb(null, finalName);
+  }
+});
 
-const ext = f => f.split(".").pop().toLowerCase();
-const safe = f => f.replace(/[^a-zA-Z0-9._-]/g, "_");
+const upload = multer({
+  storage,
+  limits: { fileSize: MAX_FILE_SIZE },
+  fileFilter: (req, file, cb) => {
+    if (ALLOWED_EXTENSIONS.test(file.originalname)) {
+      cb(null, true);
+    } else {
+      cb(new Error("File type not allowed"));
+    }
+  }
+});
 
-app.post("/api/init", (req, res) => {
-  const { filename, size } = req.body;
-  if (!filename || !size) return res.sendStatus(400);
-  if (size > MAX_FILE) return res.status(413).json({ error: "Max 10GB" });
-  if (!ALLOWED.has(ext(filename))) return res.status(400).json({ error: "Blocked file type" });
+// =======================
+// ROUTES
+// =======================
 
-  const uploadId = nanoid();
-  const fileId = nanoid(8);
-  fs.mkdirSync(path.join(CHUNKS, uploadId));
+// Upload endpoint
+app.post("/upload", upload.single("file"), (req, res) => {
+  if (!req.file) {
+    return res.status(400).json({ success: false, error: "No file uploaded" });
+  }
 
-  const cleanName = safe(filename);
-  const storedName = `${fileId}-${cleanName}`;
-
-  const db = load();
-  db.files[fileId] = { uploadId, storedName };
-  save(db);
+  const fileUrl = `${req.protocol}://${req.get("host")}/uploads/${req.file.filename}`;
 
   res.json({
-    uploadId,
-    fileId,
-    storedName,
-    chunkSize: CHUNK,
-    url: `/files/${storedName}`
+    success: true,
+    name: req.file.filename,
+    size: req.file.size,
+    url: fileUrl
   });
 });
 
-app.post("/api/chunk", express.raw({ limit: `${CHUNK}b` }), (req, res) => {
-  const { uploadId, index } = req.query;
-  const dir = path.join(CHUNKS, uploadId);
-  fs.writeFileSync(path.join(dir, `${index}.part`), req.body);
-  res.json({ ok: true });
+// 404
+app.use((req, res) => {
+  res.status(404).send("404 Not Found");
 });
 
-app.post("/api/finish", (req, res) => {
-  const { uploadId, storedName, total } = req.body;
-  const out = path.join(UPLOADS, storedName);
-  const ws = fs.createWriteStream(out);
+// =======================
+// AUTO CLEANUP (7 days)
+// =======================
+setInterval(() => {
+  const now = Date.now();
+  const MAX_AGE = 7 * 24 * 60 * 60 * 1000;
 
-  for (let i = 0; i < total; i++) {
-    ws.write(fs.readFileSync(path.join(CHUNKS, uploadId, `${i}.part`)));
-  }
-  ws.end();
+  fs.readdir(UPLOAD_DIR, (err, files) => {
+    if (err) return;
+    files.forEach(file => {
+      const filePath = path.join(UPLOAD_DIR, file);
+      fs.stat(filePath, (err, stats) => {
+        if (err) return;
+        if (now - stats.mtimeMs > MAX_AGE) {
+          fs.unlink(filePath, () => {});
+        }
+      });
+    });
+  });
+}, 12 * 60 * 60 * 1000);
 
-  fs.rmSync(path.join(CHUNKS, uploadId), { recursive: true, force: true });
-
-  res.json({ url: `/files/${storedName}` });
-});
-
-app.use("/files", express.static(UPLOADS));
-
+// =======================
+// START
+// =======================
 app.listen(PORT, () => {
   console.log("🖤⚡ Navine File Sharer running");
   console.log(`→ http://localhost:${PORT}`);
