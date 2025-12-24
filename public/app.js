@@ -1,42 +1,27 @@
 async function upload() {
-  const file = document.getElementById("file").files[0];
-  if (!file) return;
+  const fileInput = document.getElementById("file");
+  const file = fileInput.files[0];
+  if (!file) return alert("Select a file");
 
-  const init = await fetch("/api/init", {
+  const formData = new FormData();
+  formData.append("file", file);
+
+  document.getElementById("progress").innerText = "Uploading...";
+
+  const res = await fetch("/upload", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      filename: file.name,
-      size: file.size
-    })
-  }).then(r => r.json());
+    body: formData
+  });
 
-  const chunkSize = init.chunkSize;
-  const total = Math.ceil(file.size / chunkSize);
+  const data = await res.json();
 
-  for (let i = 0; i < total; i++) {
-    const slice = file.slice(i * chunkSize, (i + 1) * chunkSize);
-    await fetch(`/api/chunk?uploadId=${init.uploadId}&index=${i}`, {
-      method: "POST",
-      body: slice
-    });
-
-    document.getElementById("progress").innerText =
-      `Uploading ${Math.floor(((i + 1) / total) * 100)}%`;
+  if (!data.success) {
+    document.getElementById("progress").innerText = "Upload failed";
+    return;
   }
 
-  const done = await fetch("/api/finish", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      uploadId: init.uploadId,
-      storedName: init.storedName,
-      total
-    })
-  }).then(r => r.json());
-
+  document.getElementById("progress").innerText = "Upload complete";
   document.getElementById("result").innerHTML = `
-    <p>Upload Complete</p>
-    <a href="${done.url}" target="_blank">${done.url}</a>
+    <a href="${data.url}" target="_blank">${data.url}</a>
   `;
 }
