@@ -63,7 +63,8 @@ app.post("/upload", upload.single("file"), (req, res) => {
     });
   }
 
-  const fileUrl = `${req.protocol}://${req.get("host")}/uploads/${req.file.filename}`;
+  const protocol = req.header("x-forwarded-proto") || req.protocol;
+  const fileUrl = `${protocol}://${req.get("host")}/uploads/${req.file.filename}`;
 
   res.json({
     success: true,
